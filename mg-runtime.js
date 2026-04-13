@@ -1,272 +1,379 @@
 /**
- * Meta-Lang Runtime (v1.0.0)
- * Processes <meta-lang> tags with custom syntax:
- * - print ("message") → renders styled output
- * - style("name", "css") → injects dynamic styles
- * - backend ... → simulated server-side processing
- * - frontend ... → client-side rendering
+ * Meta-Lang Natural Language Runtime (v2.0.0)
+ * Processes natural English tags like <hero-section>, <feature-card>, etc.
+ * Converts them to proper HTML with styling
  */
 (function(global) {
   "use strict";
 
-  class MetaLangEngine {
+  class NaturalLanguageEngine {
     constructor() {
-      this.styleRegistry = new Map();
-      this.backendLogs = [];
-      this.outputContainer = null;
+      this.styles = new Map();
+      this.processedTags = new Set();
     }
 
-    // Create and inject the runtime output container
-    ensureOutputContainer() {
-      if (!this.outputContainer) {
-        // Look for existing container
-        this.outputContainer = document.querySelector('.metalang-runtime');
-        if (!this.outputContainer) {
-          this.outputContainer = document.createElement('div');
-          this.outputContainer.className = 'metalang-runtime';
-          // Insert after the last meta-lang tag or at body end
-          const lastTag = document.querySelector('meta-lang');
-          if (lastTag && lastTag.parentNode) {
-            lastTag.parentNode.insertBefore(this.outputContainer, lastTag.nextSibling);
-          } else {
-            document.body.appendChild(this.outputContainer);
-          }
-        }
-      }
-      return this.outputContainer;
-    }
-
-    // Parse and execute a single <meta-lang> block
-    parseBlock(code, hasBackendAttr = false) {
-      const lines = code.split('\n');
-      const frontendOutputs = [];
-      const backendCommands = [];
+    // Tag mapping - natural language to HTML
+    TAG_MAP = {
+      // Structure tags
+      'page': 'div',
+      'head-section': 'head',
+      'body-section': 'div',
+      'page-header': 'header',
+      'page-footer': 'footer',
       
-      let currentStyleName = null;
-      let currentStyleCSS = '';
+      // Navigation
+      'navigation': 'nav',
+      'nav-brand': 'div',
+      'nav-menu': 'ul',
+      'nav-item': 'li',
+      'nav-button': 'button',
+      
+      // Hero
+      'hero-section': 'section',
+      'hero-title': 'h1',
+      'hero-subtitle': 'h2',
+      'hero-description': 'p',
+      'highlight': 'span',
+      
+      // Buttons
+      'button-group': 'div',
+      'primary-button': 'button',
+      'secondary-button': 'button',
+      
+      // Stats
+      'stats-display': 'div',
+      'stat-item': 'div',
+      'stat-number': 'div',
+      'stat-label': 'div',
+      
+      // Sections
+      'section-container': 'section',
+      'section-heading': 'div',
+      'heading-title': 'h2',
+      'heading-description': 'p',
+      
+      // Features
+      'feature-grid': 'div',
+      'feature-card': 'div',
+      'card-icon': 'div',
+      'card-title': 'h3',
+      'card-text': 'p',
+      'card-badge': 'span',
+      
+      // Showcase
+      'showcase-section': 'section',
+      'showcase-grid': 'div',
+      'showcase-item': 'div',
+      'showcase-preview': 'div',
+      'preview-content': 'div',
+      'mini-browser': 'div',
+      'browser-bar': 'div',
+      'mini-page': 'div',
+      'mini-heading': 'h4',
+      'mini-button': 'button',
+      'mini-dashboard': 'div',
+      'dashboard-chart': 'div',
+      'dashboard-stats': 'div',
+      'mini-store': 'div',
+      'product-image': 'div',
+      'product-price': 'div',
+      'showcase-title': 'h3',
+      'showcase-tags': 'p',
+      
+      // Pricing
+      'pricing-container': 'div',
+      'pricing-plan': 'div',
+      'popular-badge': 'span',
+      'plan-name': 'h3',
+      'plan-price': 'div',
+      'plan-period': 'span',
+      'plan-description': 'p',
+      'feature-list': 'ul',
+      'feature-item': 'li',
+      'plan-button': 'button',
+      
+      // Testimonials
+      'testimonial-section': 'section',
+      'testimonial-carousel': 'div',
+      'testimonial-card': 'div',
+      'testimonial-text': 'p',
+      'author-info': 'div',
+      'author-avatar': 'div',
+      'author-details': 'div',
+      'author-name': 'div',
+      'author-title': 'div',
+      
+      // CTA
+      'cta-section': 'section',
+      'cta-container': 'div',
+      'cta-title': 'h2',
+      'cta-description': 'p',
+      'cta-button-group': 'div',
+      'primary-cta': 'button',
+      'secondary-cta': 'button',
+      'cta-note': 'p',
+      
+      // Footer
+      'footer-content': 'div',
+      'footer-section': 'div',
+      'footer-heading': 'h4',
+      'footer-links': 'ul',
+      'footer-link': 'li',
+      'footer-bottom': 'div',
+      'copyright': 'p',
+      'social-links': 'div',
+      'social-icon': 'span',
+      
+      // Meta
+      'title-text': 'title',
+      'description': 'meta'
+    };
 
-      for (let line of lines) {
-        line = line.trim();
-        if (!line || line.startsWith('//')) continue;
+    // Process natural language tags
+    processNaturalTags() {
+      const allElements = document.querySelectorAll('*');
+      const customTags = new Set();
+      
+      // Find all custom tags
+      allElements.forEach(el => {
+        const tagName = el.tagName.toLowerCase();
+        if (this.TAG_MAP[tagName] && !this.processedTags.has(el)) {
+          customTags.add(tagName);
+        }
+      });
 
-        // Match: print ("message")
-        const printMatch = line.match(/print\s*\(\s*["'`](.*?)["'`]\s*\)/);
-        if (printMatch) {
-          const message = printMatch[1];
-          frontendOutputs.push({
-            type: 'print',
-            content: message,
-            style: currentStyleName
+      // Replace each custom tag with proper HTML
+      Object.keys(this.TAG_MAP).forEach(customTag => {
+        const elements = document.querySelectorAll(customTag);
+        elements.forEach(el => {
+          if (this.processedTags.has(el)) return;
+          
+          const htmlTag = this.TAG_MAP[customTag];
+          const newEl = document.createElement(htmlTag);
+          
+          // Copy attributes
+          Array.from(el.attributes).forEach(attr => {
+            newEl.setAttribute(attr.name, attr.value);
           });
-          continue;
-        }
-
-        // Match: style("name", "css rules")
-        const styleMatch = line.match(/style\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']*)["']\s*\)/);
-        if (styleMatch) {
-          const [, name, css] = styleMatch;
-          this.registerStyle(name, css);
-          currentStyleName = name;
-          currentStyleCSS = css;
-          continue;
-        }
-
-        // Match: backend ... (explicit backend command)
-        if (line.toLowerCase().startsWith('backend')) {
-          const command = line.substring(7).trim();
-          backendCommands.push(command);
-          continue;
-        }
-
-        // Match: frontend ... (explicit frontend)
-        if (line.toLowerCase().startsWith('frontend')) {
-          const command = line.substring(8).trim();
-          // Could execute frontend-specific logic here
-          console.log('[MetaLang Frontend]', command);
-          continue;
-        }
-
-        // Any other line — treat as potential backend if block has backend attribute
-        if (hasBackendAttr) {
-          backendCommands.push(line);
-        }
-      }
-
-      return { frontendOutputs, backendCommands };
-    }
-
-    // Register a named style
-    registerStyle(name, css) {
-      if (!this.styleRegistry.has(name)) {
-        this.styleRegistry.set(name, css);
-        // Inject as a dynamic style tag
-        const styleEl = document.createElement('style');
-        styleEl.textContent = `.ml-style-${name} { ${css} }`;
-        document.head.appendChild(styleEl);
-      }
-    }
-
-    // Simulate backend processing
-    processBackend(commands) {
-      if (commands.length === 0) return null;
-      
-      const results = [];
-      const timestamp = new Date().toLocaleTimeString();
-      
-      commands.forEach(cmd => {
-        // Simulate common backend operations
-        if (cmd.includes('fetch') || cmd.includes('connect')) {
-          results.push(`⚡ ${cmd} → simulated async operation`);
-        } else if (cmd.includes('log') || cmd.includes('print')) {
-          const logMatch = cmd.match(/(?:log|print)\s*\(\s*["'](.*?)["']\s*\)/);
-          if (logMatch) {
-            results.push(`📋 ${logMatch[1]}`);
-          } else {
-            results.push(`📋 ${cmd}`);
+          
+          // Add appropriate classes
+          newEl.classList.add(`nl-${customTag}`);
+          
+          // Copy content
+          while (el.firstChild) {
+            newEl.appendChild(el.firstChild);
           }
-        } else if (cmd.includes('compute') || cmd.includes('process')) {
-          results.push(`🔄 ${cmd} → computation complete (simulated)`);
-        } else {
-          results.push(`⚙️ ${cmd}`);
-        }
+          
+          // Special handling for certain tags
+          if (customTag === 'description') {
+            newEl.setAttribute('name', 'description');
+          }
+          
+          if (customTag === 'nav-menu' || customTag === 'feature-list' || customTag === 'footer-links') {
+            // Ensure list items are properly wrapped
+            const items = Array.from(newEl.children);
+            items.forEach(item => {
+              if (item.tagName !== 'LI') {
+                const li = document.createElement('li');
+                while (item.firstChild) {
+                  li.appendChild(item.firstChild);
+                }
+                item.replaceWith(li);
+              }
+            });
+          }
+          
+          // Replace the custom element
+          el.replaceWith(newEl);
+          this.processedTags.add(newEl);
+        });
       });
-
-      this.backendLogs.push({ timestamp, commands: results });
-      return results;
     }
 
-    // Render frontend outputs to the container
-    renderFrontend(outputs, blockElement) {
-      const container = this.ensureOutputContainer();
+    // Process meta-lang style definitions
+    processMetaLangStyles() {
+      const metaTags = document.querySelectorAll('meta-lang');
       
-      outputs.forEach(output => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'ml-card';
+      metaTags.forEach(tag => {
+        const content = tag.textContent;
+        const lines = content.split('\n');
         
-        if (output.style) {
-          wrapper.classList.add(`ml-style-${output.style}`);
-        }
-
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'ml-text';
-        contentDiv.textContent = output.content;
-        
-        wrapper.appendChild(contentDiv);
-        container.appendChild(wrapper);
+        lines.forEach(line => {
+          // Match style("name", "css")
+          const styleMatch = line.match(/style\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']*)["']\s*\)/);
+          if (styleMatch) {
+            const [, name, css] = styleMatch;
+            this.injectStyle(name, css);
+          }
+        });
       });
+    }
 
-      // If no frontend outputs but we have a block element, we might want to
-      // indicate that backend processing occurred
+    // Inject styles into document
+    injectStyle(name, css) {
+      if (this.styles.has(name)) return;
+      
+      const styleEl = document.createElement('style');
+      styleEl.textContent = css;
+      styleEl.setAttribute('data-metalang-style', name);
+      document.head.appendChild(styleEl);
+      this.styles.set(name, css);
+    }
+
+    // Process backend commands
+    processBackendCommands() {
+      const backendTags = document.querySelectorAll('meta-lang[backend]');
+      const container = document.querySelector('.metalang-runtime') || this.createRuntimeContainer();
+      
+      backendTags.forEach(tag => {
+        const content = tag.textContent;
+        const lines = content.split('\n');
+        const backendCommands = [];
+        
+        lines.forEach(line => {
+          if (line.includes('backend log') || line.includes('backend initialize') || 
+              line.includes('backend load') || line.includes('backend setup') ||
+              line.includes('backend enable') || line.includes('backend start')) {
+            
+            let command = line.trim();
+            if (command.startsWith('backend ')) {
+              command = command.substring(8);
+            }
+            backendCommands.push(command);
+          }
+        });
+        
+        if (backendCommands.length > 0) {
+          this.renderBackendPanel(backendCommands, container);
+        }
+      });
+    }
+
+    // Create runtime container
+    createRuntimeContainer() {
+      const container = document.createElement('div');
+      container.className = 'metalang-runtime';
+      document.body.appendChild(container);
+      return container;
     }
 
     // Render backend panel
-    renderBackendPanel(backendResults, blockElement) {
-      if (!backendResults || backendResults.length === 0) return;
-
-      const container = this.ensureOutputContainer();
+    renderBackendPanel(commands, container) {
       const panel = document.createElement('div');
       panel.className = 'ml-backend-panel';
+      panel.style.cssText = `
+        background: #1a1730;
+        border-radius: 20px;
+        padding: 1.5rem;
+        color: #d0c8ff;
+        font-family: monospace;
+        margin: 2rem auto;
+        max-width: 1400px;
+        border-left: 6px solid #7c6cf0;
+      `;
       
-      const title = document.createElement('div');
-      title.style.marginBottom = '12px';
-      title.style.color = '#b1a5ff';
-      title.style.fontWeight = '600';
-      title.textContent = `⚙️ backend · ${new Date().toLocaleTimeString()}`;
-      panel.appendChild(title);
-
-      backendResults.forEach(line => {
-        const lineEl = document.createElement('div');
-        lineEl.className = 'ml-output-line';
-        lineEl.style.margin = '6px 0';
-        lineEl.textContent = line;
-        panel.appendChild(lineEl);
+      const header = document.createElement('div');
+      header.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid rgba(124, 108, 240, 0.3);
+      `;
+      header.innerHTML = `
+        <span style="font-size: 1.2rem;">⚙️</span>
+        <span style="font-weight: 600; color: #b1a5ff;">backend · ${new Date().toLocaleTimeString()}</span>
+      `;
+      panel.appendChild(header);
+      
+      commands.forEach(cmd => {
+        const line = document.createElement('div');
+        line.style.cssText = 'margin: 0.3rem 0; padding: 0.2rem 0;';
+        
+        if (cmd.includes('log')) {
+          const match = cmd.match(/log\s*\(\s*["'](.*?)["']\s*\)/);
+          if (match) {
+            line.innerHTML = `<span style="color: #7c6cf0;">📋</span> <span style="color: #e3d9ff;">${match[1]}</span>`;
+          } else {
+            line.innerHTML = `<span style="color: #7c6cf0;">📋</span> <span style="color: #e3d9ff;">${cmd}</span>`;
+          }
+        } else {
+          line.innerHTML = `<span style="color: #9f8eff;">⚙️</span> <span style="color: #c8bfff;">${cmd}</span>`;
+        }
+        
+        panel.appendChild(line);
       });
-
+      
       container.appendChild(panel);
     }
 
-    // Process all <meta-lang> tags
-    processAllTags() {
-      const tags = document.querySelectorAll('meta-lang');
+    // Add base styles for natural language elements
+    injectBaseStyles() {
+      const baseStyles = `
+        /* Base styles for natural language elements */
+        [class*="nl-"] {
+          box-sizing: border-box;
+        }
+        
+        .nl-page {
+          max-width: 100%;
+        }
+        
+        .nl-nav-menu {
+          display: flex;
+          gap: 2rem;
+          list-style: none;
+        }
+        
+        .nl-nav-item {
+          cursor: pointer;
+        }
+        
+        .nl-feature-list {
+          list-style: none;
+        }
+        
+        .nl-footer-links {
+          list-style: none;
+        }
+        
+        /* Hide meta-lang tags */
+        meta-lang {
+          display: none;
+        }
+      `;
       
-      tags.forEach(tag => {
-        const code = tag.textContent.trim();
-        const hasBackendAttr = tag.hasAttribute('backend');
-        const type = tag.getAttribute('type') || 'default';
-
-        // Parse the block
-        const { frontendOutputs, backendCommands } = this.parseBlock(code, hasBackendAttr);
-
-        // Process backend if any commands
-        let backendResults = null;
-        if (backendCommands.length > 0) {
-          backendResults = this.processBackend(backendCommands);
-        }
-
-        // Render frontend outputs
-        if (frontendOutputs.length > 0) {
-          this.renderFrontend(frontendOutputs, tag);
-        }
-
-        // Render backend panel if there are results
-        if (backendResults) {
-          this.renderBackendPanel(backendResults, tag);
-        }
-
-        // Optional: remove or hide the original tag
-        // tag.style.display = 'none'; // uncomment to hide source tags
-      });
+      const styleEl = document.createElement('style');
+      styleEl.textContent = baseStyles;
+      document.head.appendChild(styleEl);
     }
 
-    // Initialize the runtime
+    // Initialize everything
     init() {
-      // Add base styles if not present
-      if (!document.querySelector('style[data-metalang-base]')) {
-        const baseStyle = document.createElement('style');
-        baseStyle.setAttribute('data-metalang-base', 'true');
-        baseStyle.textContent = `
-          .metalang-runtime {
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-          }
-          .ml-card {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(10px);
-            border-radius: 24px;
-            padding: 1.5rem 2rem;
-            margin: 1.5rem 0;
-            border: 1px solid rgba(100, 80, 200, 0.15);
-            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
-          }
-          .ml-text {
-            font-size: 1.2rem;
-            line-height: 1.6;
-            color: #1e1a3a;
-          }
-          .ml-backend-panel {
-            background: #1a1730;
-            border-radius: 20px;
-            padding: 1.2rem 1.8rem;
-            color: #d0c8ff;
-            font-family: monospace;
-            margin: 1.5rem 0;
-            border-left: 6px solid #7c6cf0;
-          }
-          .ml-output-line {
-            margin: 0.25rem 0;
-            padding: 0.1rem 0;
-          }
-        `;
-        document.head.appendChild(baseStyle);
-      }
-
-      this.processAllTags();
+      // Process meta-lang styles first
+      this.processMetaLangStyles();
+      
+      // Add base styles
+      this.injectBaseStyles();
+      
+      // Convert natural language tags to HTML
+      this.processNaturalTags();
+      
+      // Process backend commands
+      this.processBackendCommands();
+      
+      // Hide original meta-lang tags
+      document.querySelectorAll('meta-lang').forEach(tag => {
+        tag.style.display = 'none';
+      });
+      
+      console.log('✨ Natural Language Runtime initialized');
     }
   }
 
   // Auto-start when DOM is ready
-  const engine = new MetaLangEngine();
+  const engine = new NaturalLanguageEngine();
   
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => engine.init());
@@ -274,10 +381,10 @@
     engine.init();
   }
 
-  // Expose for manual execution
-  global.MetaLang = {
-    process: () => engine.processAllTags(),
-    version: '1.0.0'
+  // Expose global API
+  global.NaturalLang = {
+    refresh: () => engine.init(),
+    version: '2.0.0'
   };
 
 })(typeof window !== 'undefined' ? window : global);
