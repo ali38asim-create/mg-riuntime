@@ -1,207 +1,283 @@
 /**
-by asim ali
- * .flux Full-Stack Runtime (v2.0.0)
- * - Auto-generates HTML/CSS/JS from <flux> tags
- * - Offline-compatible with CDN fallback
- * - Renamed tags: f1→h1, fstyle→<style>, fapi→mock backend
+ * Meta-Lang Runtime (v1.0.0)
+ * Processes <meta-lang> tags with custom syntax:
+ * - print ("message") → renders styled output
+ * - style("name", "css") → injects dynamic styles
+ * - backend ... → simulated server-side processing
+ * - frontend ... → client-side rendering
  */
 (function(global) {
   "use strict";
 
-  class FluxEngine {
+  class MetaLangEngine {
     constructor() {
-      this.store = { count: 0, userName: "" };
-      this.reactiveFns = [];
-      this.apiMock = {};
-      
-      // Tag & Keyword Maps
-      this.TAGS = {
-        'f1':'h1','f2':'h2','f3':'h3','f4':'h4','f5':'h5','f6':'h6',
-        'fp':'p','fdiv':'div','fspan':'span','fa':'a','fimg':'img',
-        'ful':'ul','fol':'ol','fli':'li','ftable':'table','ftr':'tr','ftd':'td','fth':'th',
-        'fform':'form','finput':'input','fbutton':'button','flabel':'label',
-        'fsection':'section','fheader':'header','ffooter':'footer','fnav':'nav',
-        'fmain':'main','farticle':'article','faside':'aside','fcode':'code','fpre':'pre',
-        'fstyle':'style','fscript':'script'
-      };
-      
-      this.KEYWORDS = {
-        'flet':'let','fconst':'const','fvar':'var','ffn':'function',
-        'fif':'if','felse':'else','ffor':'for','fwhile':'while','freturn':'return',
-        'fclass':'class','fnew':'new','fthis':'this','fimport':'import','fexport':'export',
-        'ftrue':'true','ffalse':'false','fnull':'null','fundefined':'undefined',
-        'fconsole':'console','flog':'log','ferror':'error','fwarn':'warn',
-        'fpublic':'public','fprivate':'private','fprotected':'protected',
-        'fstatic':'static','fvoid':'void','fint':'int','fstring':'string',
-        'fbool':'bool','fdouble':'double','ffloat':'float','flong':'long',
-        'fshort':'short','fbyte':'byte','fchar':'char','fobject':'Object',
-        'fPromise':'Promise','fsetTimeout':'setTimeout','fDate':'Date',
-        'fMath':'Math','frandom':'random','fapi':'this.apiMock'
-      };
+      this.styleRegistry = new Map();
+      this.backendLogs = [];
+      this.outputContainer = null;
     }
 
-    // 🔧 Transpile .flux → Standard Code
-    transpile(code) {
-      let r = code;
-      
-      // 1. Tags: <f1> → <h1>, <fstyle> → <style>
-      r = r.replace(/<\/?f([a-zA-Z0-9_-]+)\b/g, match => {
-        const tag = match.replace(/<\/?/, '').split(/[\s>]/)[0];
-        const std = this.TAGS[`f${tag}`];
-        return std ? match.replace(`f${tag}`, std) : match;
-      });
-
-      // 2. Keywords: flet → let, fapi → this.apiMock
-      for (const [flux, std] of Object.entries(this.KEYWORDS)) {
-        r = r.replace(new RegExp(`\\b${flux}\\b`, 'g'), std);
-      }
-
-      // 3. Block syntax: fdiv class="x" { ... } → <div class="x"> ... </div>
-      r = r.replace(/f([a-zA-Z0-9_-]+)\s+([^{}]+?)\s*\{([\s\S]*?)\n\s*\}/g, (_, tag, attrs, content) => {
-        const stdTag = this.TAGS[`f${tag}`] || `f${tag}`;
-        return `<${stdTag} ${attrs.trim()}>${content.trim()}</${stdTag}>`;
-      });
-
-      return r;
-    }
-
-    // 🔤 Safe Template Interpolation
-    interpolate(tpl) {
-      return tpl.replace(/\{([^}]+)\}/g, (_, expr) => {
-        try {
-          const keys = Object.keys(this.store);
-          const vals = Object.values(this.store);
-          return Function(...keys, `return (${expr})`)(...vals) ?? expr;
-        } catch { return expr; }
-      });
-    }
-
-    // 🔄 Run Reactive Updates
-    runReactives() {
-      this.reactiveFns.forEach(fn => fn());
-    }
-
-    // 📖 Execute .flux Code
-    execute(code) {
-      const js = this.transpile(code);
-
-      // 1️⃣ Parse Variables
-      js.match(/let\s+(\w+)\s*=\s*([^;\n]+)/g)?.forEach(m => {
-        const [, name, val] = m.match(/let\s+(\w+)\s*=\s*([^;\n]+)/);
-        try { this.store[name] = Function(`return ${val.trim()}`)(); }
-        catch { this.store[name] = val.trim(); }
-      });
-
-      // 2️⃣ Parse Reactive Blocks
-      [...js.matchAll(/reactive\s+(\w+)\s*\{([\s\S]*?)\n\s*\}/g)].forEach(([, v, body]) => {
-        const renders = [...body.matchAll(/render\s+"([^"]+)"\s*=>\s*`([\s\S]*?)`/g)];
-        this.reactiveFns.push(() => {
-          renders.forEach(([, sel, tpl]) => {
-            const el = document.querySelector(sel);
-            if (el) el.innerHTML = this.interpolate(tpl);
-          });
-        });
-      });
-
-      // 3️⃣ Parse Events
-      [...js.matchAll(/on\s+(\w+)\s+"([^"]+)"\s*\{([\s\S]*?)\n\s*\}/g)].forEach(([, evt, sel, body]) => {
-        const target = sel === 'document' ? document : document.querySelector(sel);
-        if (!target) return;
-        target.addEventListener(evt, (e) => {
-          const keys = Object.keys(this.store);
-          try {
-            Function('args','e','store',`
-              let ${keys.join(',')};
-              ${keys.map((_,i)=>`${keys[i]}=args[${i}]`).join(',')}
-              let event=e;
-              ${body}
-              ${keys.map(k=>`store["${k}"]=${k};`).join('')}
-            `)(Object.values(this.store), e, this.store);
-          } catch(err) { console.error('[.flux]', err); }
-          this.runReactives();
-        });
-      });
-
-      // 4️⃣ Execute Global Code (styles, api, helpers)
-      try {
-        // Create safe scope with store + DOM + apiMock
-        const scope = {
-          ...this.store,
-          document, window, console,
-          apiMock: this.apiMock,
-          render: (sel, fn) => {
-            const el = document.querySelector(sel);
-            if (el && typeof fn === 'function') {
-              el.innerHTML = this.interpolate(fn());
-            }
+    // Create and inject the runtime output container
+    ensureOutputContainer() {
+      if (!this.outputContainer) {
+        // Look for existing container
+        this.outputContainer = document.querySelector('.metalang-runtime');
+        if (!this.outputContainer) {
+          this.outputContainer = document.createElement('div');
+          this.outputContainer.className = 'metalang-runtime';
+          // Insert after the last meta-lang tag or at body end
+          const lastTag = document.querySelector('meta-lang');
+          if (lastTag && lastTag.parentNode) {
+            lastTag.parentNode.insertBefore(this.outputContainer, lastTag.nextSibling);
+          } else {
+            document.body.appendChild(this.outputContainer);
           }
-        };
-        Function(...Object.keys(scope), js)(...Object.values(scope));
-      } catch(err) {
-        console.warn('[.flux] Global execution note:', err.message);
+        }
       }
-
-      // 🚀 Initial Render
-      this.runReactives();
+      return this.outputContainer;
     }
 
-    // 🌐 Bootstrap the Page
-    bootstrap(fluxCode) {
-      // Auto-inject missing HTML structure if needed
-      if (!document.documentElement.lang) {
-        document.documentElement.lang = 'en';
-      }
-      if (!document.querySelector('meta[charset]')) {
-        const meta = document.createElement('meta');
-        meta.charset = 'UTF-8';
-        document.head.prepend(meta);
-      }
-
-      // Execute .flux code
-      this.execute(fluxCode);
-    }
-
-    // 🚀 Initialize
-    init() {
-      const fluxTags = document.querySelectorAll('flux');
+    // Parse and execute a single <meta-lang> block
+    parseBlock(code, hasBackendAttr = false) {
+      const lines = code.split('\n');
+      const frontendOutputs = [];
+      const backendCommands = [];
       
-      fluxTags.forEach(fluxTag => {
-        const src = fluxTag.getAttribute('src');
-        
-        const load = (code) => {
-          this.bootstrap(code.trim());
-          fluxTag.remove(); // Clean up after processing
-        };
+      let currentStyleName = null;
+      let currentStyleCSS = '';
 
-        if (src) {
-          // External file (works on http:// or with fallback)
-          fetch(src)
-            .then(r => r.text())
-            .then(load)
-            .catch(err => {
-              console.warn(`[.flux] Failed to load "${src}":`, err);
-              fluxTag.textContent = `⚠️ Could not load "${src}". Check path and CORS.`;
-            });
+      for (let line of lines) {
+        line = line.trim();
+        if (!line || line.startsWith('//')) continue;
+
+        // Match: print ("message")
+        const printMatch = line.match(/print\s*\(\s*["'`](.*?)["'`]\s*\)/);
+        if (printMatch) {
+          const message = printMatch[1];
+          frontendOutputs.push({
+            type: 'print',
+            content: message,
+            style: currentStyleName
+          });
+          continue;
+        }
+
+        // Match: style("name", "css rules")
+        const styleMatch = line.match(/style\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']*)["']\s*\)/);
+        if (styleMatch) {
+          const [, name, css] = styleMatch;
+          this.registerStyle(name, css);
+          currentStyleName = name;
+          currentStyleCSS = css;
+          continue;
+        }
+
+        // Match: backend ... (explicit backend command)
+        if (line.toLowerCase().startsWith('backend')) {
+          const command = line.substring(7).trim();
+          backendCommands.push(command);
+          continue;
+        }
+
+        // Match: frontend ... (explicit frontend)
+        if (line.toLowerCase().startsWith('frontend')) {
+          const command = line.substring(8).trim();
+          // Could execute frontend-specific logic here
+          console.log('[MetaLang Frontend]', command);
+          continue;
+        }
+
+        // Any other line — treat as potential backend if block has backend attribute
+        if (hasBackendAttr) {
+          backendCommands.push(line);
+        }
+      }
+
+      return { frontendOutputs, backendCommands };
+    }
+
+    // Register a named style
+    registerStyle(name, css) {
+      if (!this.styleRegistry.has(name)) {
+        this.styleRegistry.set(name, css);
+        // Inject as a dynamic style tag
+        const styleEl = document.createElement('style');
+        styleEl.textContent = `.ml-style-${name} { ${css} }`;
+        document.head.appendChild(styleEl);
+      }
+    }
+
+    // Simulate backend processing
+    processBackend(commands) {
+      if (commands.length === 0) return null;
+      
+      const results = [];
+      const timestamp = new Date().toLocaleTimeString();
+      
+      commands.forEach(cmd => {
+        // Simulate common backend operations
+        if (cmd.includes('fetch') || cmd.includes('connect')) {
+          results.push(`⚡ ${cmd} → simulated async operation`);
+        } else if (cmd.includes('log') || cmd.includes('print')) {
+          const logMatch = cmd.match(/(?:log|print)\s*\(\s*["'](.*?)["']\s*\)/);
+          if (logMatch) {
+            results.push(`📋 ${logMatch[1]}`);
+          } else {
+            results.push(`📋 ${cmd}`);
+          }
+        } else if (cmd.includes('compute') || cmd.includes('process')) {
+          results.push(`🔄 ${cmd} → computation complete (simulated)`);
         } else {
-          // Inline code
-          load(fluxTag.textContent);
+          results.push(`⚙️ ${cmd}`);
         }
       });
+
+      this.backendLogs.push({ timestamp, commands: results });
+      return results;
+    }
+
+    // Render frontend outputs to the container
+    renderFrontend(outputs, blockElement) {
+      const container = this.ensureOutputContainer();
+      
+      outputs.forEach(output => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ml-card';
+        
+        if (output.style) {
+          wrapper.classList.add(`ml-style-${output.style}`);
+        }
+
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'ml-text';
+        contentDiv.textContent = output.content;
+        
+        wrapper.appendChild(contentDiv);
+        container.appendChild(wrapper);
+      });
+
+      // If no frontend outputs but we have a block element, we might want to
+      // indicate that backend processing occurred
+    }
+
+    // Render backend panel
+    renderBackendPanel(backendResults, blockElement) {
+      if (!backendResults || backendResults.length === 0) return;
+
+      const container = this.ensureOutputContainer();
+      const panel = document.createElement('div');
+      panel.className = 'ml-backend-panel';
+      
+      const title = document.createElement('div');
+      title.style.marginBottom = '12px';
+      title.style.color = '#b1a5ff';
+      title.style.fontWeight = '600';
+      title.textContent = `⚙️ backend · ${new Date().toLocaleTimeString()}`;
+      panel.appendChild(title);
+
+      backendResults.forEach(line => {
+        const lineEl = document.createElement('div');
+        lineEl.className = 'ml-output-line';
+        lineEl.style.margin = '6px 0';
+        lineEl.textContent = line;
+        panel.appendChild(lineEl);
+      });
+
+      container.appendChild(panel);
+    }
+
+    // Process all <meta-lang> tags
+    processAllTags() {
+      const tags = document.querySelectorAll('meta-lang');
+      
+      tags.forEach(tag => {
+        const code = tag.textContent.trim();
+        const hasBackendAttr = tag.hasAttribute('backend');
+        const type = tag.getAttribute('type') || 'default';
+
+        // Parse the block
+        const { frontendOutputs, backendCommands } = this.parseBlock(code, hasBackendAttr);
+
+        // Process backend if any commands
+        let backendResults = null;
+        if (backendCommands.length > 0) {
+          backendResults = this.processBackend(backendCommands);
+        }
+
+        // Render frontend outputs
+        if (frontendOutputs.length > 0) {
+          this.renderFrontend(frontendOutputs, tag);
+        }
+
+        // Render backend panel if there are results
+        if (backendResults) {
+          this.renderBackendPanel(backendResults, tag);
+        }
+
+        // Optional: remove or hide the original tag
+        // tag.style.display = 'none'; // uncomment to hide source tags
+      });
+    }
+
+    // Initialize the runtime
+    init() {
+      // Add base styles if not present
+      if (!document.querySelector('style[data-metalang-base]')) {
+        const baseStyle = document.createElement('style');
+        baseStyle.setAttribute('data-metalang-base', 'true');
+        baseStyle.textContent = `
+          .metalang-runtime {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .ml-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 1.5rem 2rem;
+            margin: 1.5rem 0;
+            border: 1px solid rgba(100, 80, 200, 0.15);
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+          }
+          .ml-text {
+            font-size: 1.2rem;
+            line-height: 1.6;
+            color: #1e1a3a;
+          }
+          .ml-backend-panel {
+            background: #1a1730;
+            border-radius: 20px;
+            padding: 1.2rem 1.8rem;
+            color: #d0c8ff;
+            font-family: monospace;
+            margin: 1.5rem 0;
+            border-left: 6px solid #7c6cf0;
+          }
+          .ml-output-line {
+            margin: 0.25rem 0;
+            padding: 0.1rem 0;
+          }
+        `;
+        document.head.appendChild(baseStyle);
+      }
+
+      this.processAllTags();
     }
   }
 
-  // 🟢 Auto-start when DOM ready
-  const start = () => new FluxEngine().init();
+  // Auto-start when DOM is ready
+  const engine = new MetaLangEngine();
+  
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start);
+    document.addEventListener('DOMContentLoaded', () => engine.init());
   } else {
-    start();
+    engine.init();
   }
 
-  // 🌍 Expose global API
-  global.Flux = {
-    create: () => new FluxEngine(),
-    VERSION: '2.0.0'
+  // Expose for manual execution
+  global.MetaLang = {
+    process: () => engine.processAllTags(),
+    version: '1.0.0'
   };
 
 })(typeof window !== 'undefined' ? window : global);
